@@ -9,6 +9,7 @@ export default class ElementChanges {
 
     private styleChanges: ChangingItemsTracker = new ChangingItemsTracker();
     private attributeChanges: ChangingItemsTracker = new ChangingItemsTracker();
+    private propertyChanges: ChangingItemsTracker = new ChangingItemsTracker();
 
     addClass(className: string) {
         if (!this.removedClasses.delete(className)) {
@@ -38,6 +39,10 @@ export default class ElementChanges {
         this.attributeChanges.removeItem(attributeName, originalValue);
     }
 
+    addPropertyChange(propertyName: string, newValue: string, originalValue: string | null) {
+        this.propertyChanges.setItem(propertyName, newValue, originalValue);
+    }
+
     getAddedClasses(): string[] {
         return [...this.addedClasses];
     }
@@ -60,6 +65,10 @@ export default class ElementChanges {
 
     getRemovedAttributes(): string[] {
         return this.attributeChanges.getRemovedItems();
+    }
+
+    getChangedProperties(): { name: string; value: string }[] {
+        return this.propertyChanges.getChangedItems();
     }
 
     applyToElement(element: HTMLElement): void {
@@ -86,6 +95,10 @@ export default class ElementChanges {
         this.attributeChanges.getRemovedItems().forEach((attributeName) => {
             element.removeAttribute(attributeName);
         });
+
+        this.propertyChanges.getChangedItems().forEach((change) => {
+            (element as any)[change.name] = change.value;
+        });
     }
 
     isEmpty(): boolean {
@@ -93,7 +106,8 @@ export default class ElementChanges {
             this.addedClasses.size === 0 &&
             this.removedClasses.size === 0 &&
             this.styleChanges.isEmpty() &&
-            this.attributeChanges.isEmpty()
+            this.attributeChanges.isEmpty() &&
+            this.propertyChanges.isEmpty()
         );
     }
 }

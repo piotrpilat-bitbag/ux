@@ -17,6 +17,9 @@ export default class {
     private removedElements: Array<Element> = [];
     private isStarted = false;
     private originalIds: Map<Element, string | null> = new Map();
+    private storedInputValues: WeakMap<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement, string> = new WeakMap();
+    private valueChangeHandlers: Map<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement, () => void> = new Map();
+    private inputValuesObserver: MutationObserver | null = null;
 
     constructor(element: Element, shouldTrackChangeCallback: (element: Element) => boolean) {
         this.element = element;
@@ -35,12 +38,15 @@ export default class {
             attributes: true,
             attributeOldValue: true,
         });
+
+        this.trackInputValues();
         this.isStarted = true;
     }
 
     stop(): void {
         if (this.isStarted) {
             this.mutationObserver.disconnect();
+            this.untrackInputValues();
 
             this.isStarted = false;
         }
@@ -317,5 +323,82 @@ export default class {
      */
     private isElementAddedByTranslation(element: Element): boolean {
         return element.tagName === 'FONT' && element.getAttribute('style') === 'vertical-align: inherit;';
+    }
+
+    private trackInputValues(): void {
+        // Collect all input-like elements and track their initial values
+        const inputElements = this.element.querySelectorAll('input, textarea, select');
+        inputElements.forEach((element) => {
+            this.attachValueChangeListener(element as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement);
+        });
+
+        // Also observe for newly added input elements
+        this.inputValuesObserver = new MutationObserver((mutations) => {
+            mutations.forEach((mutation) => {
+                mutation.addedNodes.forEach((node) => {
+                    if (node instanceof Element) {
+                        if (node.tagName === 'INPUT' || node.tagName === 'TEXTAREA' || node.tagName === 'SELECT') {
+                            this.attachValueChangeListener(node as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement);
+                        }
+                        // Check descendants
+                        const descendants = node.querySelectorAll('input, textarea, select');
+                        descendants.forEach((descendant) => {
+                            this.attachValueChangeListener(descendant as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement);
+                        });
+                    }
+                });
+            });
+        });
+
+        this.inputValuesObserver.observe(this.element, { childList: true, subtree: true });
+    }
+
+    private attachValueChangeListener(el: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement): void {
+        if (this.valueChangeHandlers.has(el)) {
+            return;
+        }
+
+        this.storedInputValues.set(el, el.value);
+
+        const handler = () => this.handleValueChange(el);
+        this.valueChangeHandlers.set(el, handler);
+        el.addEventListener('change', handler, true);
+        el.addEventListener('input', handler, true);
+    }
+
+    private untrackInputValues(): void {
+        // Remove all event listeners
+        this.valueChangeHandlers.forEach((handler, el) => {
+            el.removeEventListener('change', handler, true);
+            el.removeEventListener('input', handler, true);
+        });
+        this.valueChangeHandlers.clear();
+
+        // Stop observing for new elements
+        if (this.inputValuesObserver) {
+            this.inputValuesObserver.disconnect();
+            this.inputValuesObserver = null;
+        }
+    }
+
+    private handleValueChange(element: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement): void {
+        if (!this.shouldTrackChangeCallback(element)) {
+            return;
+        }
+
+        const oldValue = this.storedInputValues.get(element) || '';
+        const newValue = element.value;
+
+        if (oldValue !== newValue) {
+            this.storedInputValues.set(element, newValue);
+
+            // Record this change in ElementChanges
+            if (!this.changedElements.has(element)) {
+                this.changedElements.set(element, new ElementChanges());
+                this.changedElementsCount++;
+            }
+            const changedElement = this.changedElements.get(element) as ElementChanges;
+            changedElement.addPropertyChange('value', newValue, oldValue);
+        }
     }
 }
