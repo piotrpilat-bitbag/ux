@@ -29,6 +29,26 @@ export function executeMorphdom(
 ) {
     const externallyChangedIds = new Map<Element, string | null>();
 
+    // Track value changes for external widgets (Trix, TomSelect, etc)
+    // MutationObserver doesn't track .value property, so we capture values
+    const capturedWidgetValues = new Map<HTMLElement, any>();
+    rootFromElement.querySelectorAll('trix-editor, select[data-tom-select], select[data-controller*="autocomplete"]').forEach((elem) => {
+        if ((elem as any).tomselect) {
+            // TomSelect selected value
+            capturedWidgetValues.set(elem as HTMLElement, (elem as any).tomselect.getValue());
+            (modifiedFieldElements as Array<HTMLElement>).push(elem as HTMLElement);
+        }
+        if (elem.tagName === 'TRIX-EDITOR') {
+            // Trix editor - track the hidden input
+            const inputId = (elem as any).getAttribute('input');
+            const input = inputId ? document.getElementById(inputId) as HTMLInputElement : null;
+            if (input && input.value) {
+                capturedWidgetValues.set(input, input.value);
+                (modifiedFieldElements as Array<HTMLElement>).push(input);
+            }
+        }
+    });
+
     try {
         // Match using server IDs. Restore client IDs only after all matching and
         // focus restoration have finished, so Idiomorph's ID maps remain valid.
