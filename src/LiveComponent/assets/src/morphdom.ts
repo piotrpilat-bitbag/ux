@@ -113,6 +113,15 @@ export function executeMorphdom(
 
         Idiomorph.morph(rootFromElement, rootToElement, {
             callbacks: {
+                beforeAttributeUpdated: (attrName: string, fromEl: Element, updateType: string) => {
+                    // Prevent Stimulus's TokenListObserver from triggering on data-controller/data-model
+                    // changes. These attributes are controlled by Stimulus and we don't want to
+                    // cause unnecessary disconnect/reconnect cycles that destroy widget state.
+                    if (attrName.startsWith('data-controller') || attrName.startsWith('data-model')) {
+                        return false;
+                    }
+                    return true;
+                },
                 beforeNodeMorphed: (fromEl: Element, toEl: Element) => {
                     // Idiomorph loop also over Text node
                     if (!(fromEl instanceof Element) || !(toEl instanceof Element)) {
